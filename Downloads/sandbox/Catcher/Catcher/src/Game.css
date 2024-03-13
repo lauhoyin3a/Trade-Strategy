@@ -1,0 +1,31 @@
+
+.catcher_container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+.catcher{
+    width:60%;
+    height: auto;
+}
+
+.drop_container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.drop_item{
+  width:40%;
+  height: auto;
+}
+.drop_item.no-transition {
+  transition: none !important;
+}
