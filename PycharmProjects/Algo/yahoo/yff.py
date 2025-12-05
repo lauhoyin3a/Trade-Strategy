@@ -12,6 +12,7 @@ def get_nq_1h():
     return hourly
 
 
+# assume now is bar open
 def calculate_thresholds(df, vol_lookback=20, chart_res_minutes=60):
     # for 1-hour data
     # Trading hours per day: 6.5 hours (390 minutes)
@@ -20,56 +21,53 @@ def calculate_thresholds(df, vol_lookback=20, chart_res_minutes=60):
     periods_per_year = (252.0 * 6.5)
     # periods_per_year = (252.0 * 390.0) / chart_res_minutes
 
-    df['log_return'] = np.log(df['Close'] / df['Close'].shift(1))
 
+    # curr bar close return dont use for calculation!! look ahead bias
+    df['log_return'] = np.log(df['Close'] / df['Close'].shift(1))
     # Calculate annualized volatility
     # Standard deviation of log returns * sqrt(periods per year)
     df['volatility'] = df['log_return'].rolling(window=vol_lookback).std() * np.sqrt(periods_per_year)
 
-    # Expected move for one bar - calculated based on current bar
-    df['expected_move'] = df['Close'] * df['volatility'] * np.sqrt(1.0 / periods_per_year)
+    # Volatility at bar N: uses returns through bar N
+    prev_close = df['Close'].shift(1)
+    prev_vol = df['volatility'].shift(1)  # Vol calculated through bar N-1
 
-    # Define thresholds around current bar's close
-    df['upper_threshold'] = df['Close'].shift(1) + df['expected_move'].shift(1)
-    df['lower_threshold'] = df['Close'].shift(1) - df['expected_move'].shift(1)
+    df['expected_move'] = prev_close * prev_vol * np.sqrt(1.0 / periods_per_year)
+    df['upper_threshold'] = prev_close + df['expected_move']
+    df['lower_threshold'] = prev_close - df['expected_move']
 
     return df
 
 
 def detect_crossover_signals(df):
     """
-    Detect crossover signals with realistic execution:
-    - Signal detected at bar close
-    - Entry executed at NEXT bar's open
+    At bar N's open:
+    - Check if bar N-1's close crossed the threshold that was active during bar N-1
+    - Threshold active during bar N-1 = threshold[N-1] (based on Close[N-2])
     """
-    prev_close = df['Close'].shift(1)
-    prev_upper = df['upper_threshold'].shift(1)
-    prev_lower = df['lower_threshold'].shift(1)
+    # Bar N-2's close (before the crossover)
+    close_before = df['Close'].shift(2)
 
-    curr_close = df['Close']
-    curr_upper = df['upper_threshold']
-    curr_lower = df['lower_threshold']
+    # Bar N-1's close (after the crossover)
+    close_after = df['Close'].shift(1)
 
-    price_above_sma = df['Close'] > df['sma20']  # Bullish
-    price_below_sma = df['Close'] < df['sma20']  # Bearish
+    # Threshold that was active during bar N-1 (based on Close[N-2])
+    threshold_upper = df['upper_threshold'].shift(1)
+    threshold_lower = df['lower_threshold'].shift(1)
+    before_threshold_upper = df['upper_threshold'].shift(2)
+    before_threshold_lower = df['lower_threshold'].shift(2)
 
-    # Signal detected at current bar's close (as Series, not bool)
-    df['long_signal'] = (prev_close <= prev_upper) & (curr_close > curr_upper) & price_above_sma
-    df['short_signal'] = (prev_close >= prev_lower) & (curr_close < curr_lower) & price_below_sma
+    # MA filter (use bar N-1's values)
+    price_above_sma = close_after > df['sma20'].shift(1)
+    price_below_sma = close_after < df['sma20'].shift(1)
 
-    # Shift signals forward by 1 bar = entry happens on next bar
-    df['long_entry'] = df['long_signal'].shift(1, fill_value=False)
-    df['short_entry'] = df['short_signal'].shift(1, fill_value=False)
+    # Crossover: was below/at threshold, now above/below
+    df['long_signal'] = (close_before <= before_threshold_upper) & (close_after > threshold_upper) & price_above_sma
+    df['short_signal'] = (close_before >= before_threshold_lower) & (close_after < threshold_lower) & price_below_sma
 
-    # Entry price is this bar's Open
-    df['entry_price'] = np.nan
-    df.loc[df['long_entry'], 'entry_price'] = df.loc[df['long_entry'], 'Open']
-    df.loc[df['short_entry'], 'entry_price'] = df.loc[df['short_entry'], 'Open']
-
-    # Position: 1 = Long, -1 = Short, 0 = No entry this bar
-    df['position'] = 0
-    df.loc[df['long_entry'], 'position'] = 1
-    df.loc[df['short_entry'], 'position'] = -1
+    # Entry at bar N's open
+    df['long_entry'] = df['long_signal']
+    df['short_entry'] = df['short_signal']
 
     return df
 
