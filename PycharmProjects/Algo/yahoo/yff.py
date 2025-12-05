@@ -75,7 +75,7 @@ def plot_trade(df):
     df.index = pd.to_datetime(df.index, utc=True).tz_convert(None)
     df['long_marker'] = np.where(df['long_entry'], df['Low'] * 0.999, np.nan)
     df['short_marker'] = np.where(df['short_entry'], df['High'] * 1.001, np.nan)
-    plot_df = df.tail(100).copy()
+    plot_df = df.tail(200).copy()
 
     # Create additional plots (overlays)
     add_plots = [
