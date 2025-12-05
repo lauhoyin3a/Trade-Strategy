@@ -50,9 +50,12 @@ def detect_crossover_signals(df):
     curr_upper = df['upper_threshold']
     curr_lower = df['lower_threshold']
 
+    price_above_sma = df['Close'] > df['sma20']  # Bullish
+    price_below_sma = df['Close'] < df['sma20']  # Bearish
+
     # Signal detected at current bar's close (as Series, not bool)
-    df['long_signal'] = (prev_close <= prev_upper) & (curr_close > curr_upper)
-    df['short_signal'] = (prev_close >= prev_lower) & (curr_close < curr_lower)
+    df['long_signal'] = (prev_close <= prev_upper) & (curr_close > curr_upper) & price_above_sma
+    df['short_signal'] = (prev_close >= prev_lower) & (curr_close < curr_lower) & price_below_sma
 
     # Shift signals forward by 1 bar = entry happens on next bar
     df['long_entry'] = df['long_signal'].shift(1, fill_value=False)
@@ -70,6 +73,25 @@ def detect_crossover_signals(df):
 
     return df
 
+def plot_trade(df):
+    df.index = pd.to_datetime(df.index, utc=True).tz_convert(None)
+    df['long_marker'] = np.where(df['long_entry'], df['Low'] * 0.999, np.nan)
+    df['short_marker'] = np.where(df['short_entry'], df['High'] * 1.001, np.nan)
+    plot_df = df.tail(100).copy()
+
+    # Create additional plots (overlays)
+    add_plots = [
+        mpf.make_addplot(plot_df['sma20'], color='blue', width=1.5),
+        mpf.make_addplot(plot_df['upper_threshold'], color='green', linestyle='--', width=1),
+        mpf.make_addplot(plot_df['lower_threshold'], color='red', linestyle='--', width=1),
+        mpf.make_addplot(plot_df['long_marker'], type='scatter', marker='^', markersize=100, color='lime'),
+        mpf.make_addplot(plot_df['short_marker'], type='scatter', marker='v', markersize=100, color='red'),
+    ]
+
+    mpf.plot(plot_df, type='candle', style='charles', addplot=add_plots,
+             volume=True, figsize=(14, 8), title='NQ with Crossover Signals')
+
+
 # Get and save 1-hour data
 # data = get_nq_1h()
 # data.to_csv("NQ_1h.csv")
@@ -79,24 +101,7 @@ df['sma20'] = df['Close'].rolling(20).mean()
 df = calculate_thresholds(df, 20)
 df = detect_crossover_signals(df)
 
-
-df.index = pd.to_datetime(df.index, utc=True).tz_convert(None)
-df['long_marker'] = np.where(df['long_entry'], df['Low'] * 0.999, np.nan)
-df['short_marker'] = np.where(df['short_entry'], df['High'] * 1.001, np.nan)
-plot_df = df.tail(100).copy()
-
-# Create additional plots (overlays)
-add_plots = [
-    mpf.make_addplot(plot_df['sma20'], color='blue', width=1.5),
-    mpf.make_addplot(plot_df['upper_threshold'], color='green', linestyle='--', width=1),
-    mpf.make_addplot(plot_df['lower_threshold'], color='red', linestyle='--', width=1),
-    mpf.make_addplot(plot_df['long_marker'], type='scatter', marker='^', markersize=100, color='lime'),
-    mpf.make_addplot(plot_df['short_marker'], type='scatter', marker='v', markersize=100, color='red'),
-]
-
-mpf.plot(plot_df, type='candle', style='charles', addplot=add_plots,
-         volume=True, figsize=(14, 8), title='NQ with Crossover Signals')
-
+plot_trade(df)
 
 long_entries = df['long_entry'].values
 short_entries = df['short_entry'].values
