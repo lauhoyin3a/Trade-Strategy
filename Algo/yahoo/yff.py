@@ -98,20 +98,24 @@ def plot_trade(df):
 
 df = pd.read_csv('NQ_1h.csv', index_col=0, parse_dates=True)
 df['sma20'] = df['Close'].rolling(20).mean()
-df = calculate_thresholds(df, 20)
+df = calculate_thresholds(df, 70)
 df = detect_crossover_signals(df)
 
 plot_trade(df)
 # user 2024
-df = df[df.index.year == 2024]
+# df = df[df.index.year == 2025]
 
 long_entries = df['long_entry'].values
 short_entries = df['short_entry'].values
-# Stop loss = 1x expected move as a % of current price
-df['sl_pct'] = df['expected_move'] * 0.7 / df['Close'].shift(1)
+# # Stop loss = 1x expected move as a % of current price
+# df['sl_pct'] = df['expected_move'] * 0.7 / df['Close'].shift(1)
+#
+# # Take profit = 3x expected move as a % of current price
+# df['tp_pct'] = (df['expected_move'] * 2) / df['Close'].shift(1)
 
-# Take profit = 3x expected move as a % of current price
-df['tp_pct'] = (df['expected_move'] * 2) / df['Close'].shift(1)
+trail_multiplier = 1.5
+df['ts_pct'] = (df['expected_move'] * trail_multiplier) / df['Close'].shift(1)
+
 
 
 pf = vbt.Portfolio.from_signals(
@@ -128,10 +132,12 @@ pf = vbt.Portfolio.from_signals(
     size_type='amount',         # 1 contract
     fees=0,
     fixed_fees=2.50,
+    slippage=0.00005,
     freq='1h',
-    accumulate=False,           # Don't add to position, just flip
-    sl_stop=df['sl_pct'].values,
-    tp_stop=df['tp_pct'].values,
+    accumulate=True,  # Enable pyramiding
+    max_size=3,  # Max 5 contracts (like pyramiding=5)
+    size_granularity=1,  # Trade in whole contracts
+    sl_stop=df['ts_pct'].values,
     price=df['Open'],  # Execute trades at Open price
     stop_exit_price='stoplimit',  # Use exact stop price, not close
 )
